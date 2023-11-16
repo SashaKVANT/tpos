@@ -1,0 +1,64 @@
+version: '3'
+
+services:
+  db:
+    image: mariadb:10.11.5
+    restart: always
+    container_name: db
+    command: --init-file=/tmp/init.sql   
+    env_file:
+      - ./.env
+    volumes:
+      - ./src/mysql:/var/lib/mysql:delegated
+      # - ./conf/middle/master.cnf:/etc/mysql/my.cnf
+      - ./src/init.sql:/tmp/init.sql
+    ports:
+      - 3306:3306
+    environment:
+      - "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}"
+      - "MYSQL_DATABASE=${MYSQL_DATABASE}"
+      - "MYSQL_USER=${MYSQL_USER}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD}"
+    healthcheck:
+      test: ["CMD", "mariadb-admin" ,"ping", "-h", "localhost", "-u" , "${MYSQL_USER}" , "-p${MYSQL_PASSWORD}"]
+      timeout: 20s
+      retries: 10
+    networks:
+      - net
+  
+  filler:
+    image: filler:tpos
+    build:
+      context: ./dockerfiles
+      dockerfile: script.Dockerfile 
+    container_name: filler
+    env_file:
+      - ./.env
+    volumes:
+      - ./scripts/fill.sh:/data/fill.sh
+      - ./src/data.csv:/data.csv
+    command: bash /data/fill.sh
+    networks:
+      - net
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: web:tpos
+    build:
+      context: ./dockerfiles
+      dockerfile: web.Dockerfile 
+    container_name: web
+    env_file:
+      - ./.env
+    networks:
+      - net
+    ports:
+      - "8000:8000"
+    depends_on:
+      - filler
+
+networks:
+  net:
+    driver: bridge
